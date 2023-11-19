@@ -109,8 +109,8 @@ async def _tldr(ctx, message_link: str):
         if message.author.bot and message.author.name == "tl;dr":
             continue
         messages.append(f"{message.author}: {message.content}\n")
-    # Ignore first last messages, which are the bot's response and the /tldr command.
-    messages = messages[:-2] if len(messages) > 1 else []
+    # Ignore last message, which is the /tldr command.
+    messages = messages[:-1] if len(messages) > 1 else messages
 
     if len("".join(messages)) > MAX_MESSAGE_COMBINED_LENGTH:
         await bot_response.edit(

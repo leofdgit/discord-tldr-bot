@@ -1,0 +1,142 @@
+from discord import Intents, NotFound, HTTPException
+from discord.ext import commands
+from collections import Counter
+from openai import OpenAI
+import re
+import os
+from math import inf
+from dotenv import load_dotenv
+
+# Require permissions int: 34359938048
+
+LINK_PATTERN = r"https://discord\.com/channels/(?:\d+)/(\d+)/(\d+)"
+
+# Attempts to load environment variables from the file specified by environment variable
+# ENV_FILE if it is set.
+if ENV_FILE := os.getenv("ENV_FILE"):
+    load_dotenv(ENV_FILE)
+
+# Read the list of authorized user IDs from an environment variable.
+# The value of the AUTHORIZED_USERS env var should be a csv-delimited array
+# of Discord IDs.
+# E.g. 12345,67890
+# which would allow the two users whose Discord IDs are 12345 and 67890 to
+# use the command.
+AUTHORIZED_USERS = os.getenv("AUTHORIZED_USERS", "").split(",")
+MAX_MESSAGES = int(os.getenv("MAX_MESSAGES") or 100000)
+MAX_MESSAGE_COMBINED_LENGTH = int(
+    os.getenv("MAX_MESSAGE_COMBINED_LENGTH") or (100000 * 1000)
+)
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
+
+
+# Create an instance of a bot
+intents = Intents.default()
+intents.message_content = True
+intents.messages = True
+intents.guild_messages = True
+intents.guild_reactions = True
+bot = commands.Bot(command_prefix="/", intents=intents)
+
+# OpenAI Client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+
+# Event listener for when the bot has switched from offline to online.
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user.name}.")
+
+
+@bot.command(name="tldr")
+async def tldr(ctx, message_link: str):
+    try:
+        await _tldr(ctx, message_link)
+    except Exception as error:
+        print(f"An error occurred: {str(error)}")
+        await ctx.send("Error: unable to process request.")
+
+
+async def _tldr(ctx, message_link: str):
+    print(f"Processing tl;dr message_link={message_link}")
+
+    # Check if the user is authorized
+    if len(AUTHORIZED_USERS) > 0 and str(ctx.author.id) not in AUTHORIZED_USERS:
+        await ctx.send("You do not have permission to use this command.")
+        return
+
+    # Validate and parse message_link
+    match = re.match(LINK_PATTERN, message_link)
+    if not match:
+        await ctx.send("Invalid message link.")
+        return
+
+    channel_id, message_id = match.groups()
+
+    # Verify if the message is in the same channel
+    if str(ctx.channel.id) != channel_id:
+        await ctx.send("Message link is not from this channel.")
+        return
+
+    starting_message = None
+    try:
+        # Fetch the starting message by ID
+        starting_message = await ctx.channel.fetch_message(int(message_id))
+    except NotFound:
+        # If the message is not found in the channel
+        await ctx.send("Message not found in this channel.")
+        return
+    except HTTPException:
+        # If fetching the message failed due to other reasons
+        await ctx.send("Failed to fetch the message.")
+        return
+
+    bot_response = await ctx.send(
+        f"Processing tl;dr of chat after message <{message_link}>..."
+    )
+
+    messages = [f"{starting_message.author}: {starting_message.content}\n"]
+    async for message in ctx.channel.history(limit=None, after=starting_message):
+        if len(messages) > MAX_MESSAGES:
+            await bot_response.edit(
+                content=bot_response.content
+                + "\n\nToo many messages to tl;dr! I can summarize at most {MAX_MESSAGES} messages."
+            )
+            return
+        if message.author.bot and message.author.name == "tl;dr":
+            continue
+        messages.append(f"{message.author}: {message.content}\n")
+    # Ignore first last messages, which are the bot's response and the /tldr command.
+    messages = messages[:-2] if len(messages) > 1 else []
+
+    if len("".join(messages)) > MAX_MESSAGE_COMBINED_LENGTH:
+        await bot_response.edit(
+            content=bot_response.content
+            + "\n\nToo much text to tl;dr! I can summarize at most {MAX_MESSAGE_COMBINED_LENGTH} characters."
+        )
+        return
+
+    # OpenAI call to generate summary
+    response = client.chat.completions.create(
+        max_tokens=MAX_TOKENS,
+        model=OPENAI_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": f"When prompted for a summary, return the most important points. MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES (including capitalisation). Be succinct: use between 1 and 4 bullet points in your response, depending on how many distinct topics there are to summarize. Interpret messages starting with '/' as Discord bot commands. /tldr <link> means that a request to summarize all messages in the channel following the Discord post referenced by <link> was made (to you!).",
+            },
+            {
+                "role": "user",
+                "content": f"Summarize the following conversation:\n\n{''.join(messages)}",
+            },
+        ],
+    )
+    await bot_response.edit(
+        content=bot_response.content + "\n\n" + response.choices[0].message.content
+    )
+
+
+bot.run(DISCORD_BOT_KEY)

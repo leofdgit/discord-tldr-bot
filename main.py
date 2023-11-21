@@ -21,7 +21,7 @@ if ENV_FILE := os.getenv("ENV_FILE"):
 # E.g. 12345,67890
 # which would allow the two users whose Discord IDs are 12345 and 67890 to
 # use the command.
-AUTHORIZED_USERS = os.getenv("AUTHORIZED_USERS", "").split(",")
+AUTHORIZED_USERS = [u for u in os.getenv("AUTHORIZED_USERS", "").split(",") if u != ""]
 MAX_MESSAGES = int(os.getenv("MAX_MESSAGES") or 100000)
 MAX_MESSAGE_COMBINED_LENGTH = int(
     os.getenv("MAX_MESSAGE_COMBINED_LENGTH") or (100000 * 1000)

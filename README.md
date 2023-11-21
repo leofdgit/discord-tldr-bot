@@ -66,6 +66,7 @@ ENV_FILE=/path/to/env/file python main.py
 
 1. Message Limit: the choice of API model dictates how many messages can be processed See the [models documentation](https://platform.openai.com/docs/models) for more information.
 2. API Rate Limits: Be mindful of OpenAI's API [usage limits](https://platform.openai.com/account/limits).
-3. Behaviour: the summaries given are not deterministic, meaning that summarizing the same content
+3. Cost: GPT4 is quite expensive; at the time of writing, summarizing 200 short-ish messages incurred a cost of $0.10. GPT3.5 is much cheaper.
+4. Behaviour: the summaries given are not deterministic, meaning that summarizing the same content
    twice may give two different results. The summarizies may be innacurate.
-4. Privacy Considerations: Ensure users in your Discord server are aware that their messages may be processed by this bot, and hence OpenAI, for summarization.
+5. Privacy Considerations: Ensure users in your Discord server are aware that their messages may be processed by this bot, and hence OpenAI, for summarization.

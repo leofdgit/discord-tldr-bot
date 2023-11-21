@@ -1,6 +1,5 @@
 from discord import Intents, NotFound, HTTPException
 from discord.ext import commands
-from collections import Counter
 from openai import OpenAI
 import re
 import os
@@ -52,16 +51,16 @@ async def on_ready():
 
 
 @bot.command(name="tldr")
-async def tldr(ctx, message_link: str):
+async def tldr(ctx, message_link: str, language: str = "English"):
     try:
-        await _tldr(ctx, message_link)
+        await _tldr(ctx, message_link, language)
     except Exception as error:
         print(f"An error occurred: {str(error)}")
         await ctx.send("Error: unable to process request.")
 
 
-async def _tldr(ctx, message_link: str):
-    print(f"Processing tl;dr message_link={message_link}")
+async def _tldr(ctx, message_link: str, language):
+    print(f"Processing tl;dr message_link={message_link} language={language}")
 
     # Check if the user is authorized
     if len(AUTHORIZED_USERS) > 0 and str(ctx.author.id) not in AUTHORIZED_USERS:
@@ -126,7 +125,15 @@ async def _tldr(ctx, message_link: str):
         messages=[
             {
                 "role": "system",
-                "content": f"When prompted for a summary, return the most important points. MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES (including capitalisation). Be succinct: use between 1 and 4 bullet points in your response, depending on how many distinct topics there are to summarize. Interpret messages starting with '/' as Discord bot commands. /tldr <link> means that a request to summarize all messages in the channel following the Discord post referenced by <link> was made (to you!).",
+                "content": f"""Summarize the text using bullet points. The text may not be in English.
+                MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES. Be succinct:
+                use between 1 and 4 bullet points in your response, depending on how many distinct topics
+                there are to summarize. Interpret messages starting with '/' as Discord bot commands.
+                /tldr <link> means that a request to summarize all messages in the channel following the
+                Discord post referenced by <link> was made (to you!).
+                Quoting particularly funny, extraordinary or shocking lines from
+                the messages is a bonus. Write the summary in {language}; if {language} is
+                not a language you know then revert to English.""",
             },
             {
                 "role": "user",

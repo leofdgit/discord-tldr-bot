@@ -105,7 +105,7 @@ async def _tldr(ctx, message_link: str, language):
                 + "\n\nToo many messages to tl;dr! I can summarize at most {MAX_MESSAGES} messages."
             )
             return
-        if message.author.bot and message.author.name == "tl;dr":
+        if message.author.bot and message.author.id == bot.application_id:
             continue
         messages.append(f"{message.author}: {message.content}\n")
     # Ignore last message, which is the /tldr command.

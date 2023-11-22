@@ -127,7 +127,7 @@ async def _tldr(ctx, message_link: str, language):
                 "role": "system",
                 "content": f"""Summarize the text using bullet points. The text may not be in English.
                 MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES. Be succinct:
-                use between 1 and 4 bullet points in your response, depending on how many distinct topics
+                use between 1 and 5 bullet points in your response, depending on how many distinct topics
                 there are to summarize. Interpret messages starting with '/' as Discord bot commands.
                 /tldr <link> means that a request to summarize all messages in the channel following the
                 Discord post referenced by <link> was made (to you!).

@@ -1,4 +1,4 @@
-from discord import Intents, NotFound, HTTPException
+from discord import Intents, NotFound, HTTPException, Message, utils
 from discord.ext import commands
 from openai import OpenAI
 import re
@@ -30,6 +30,7 @@ MAX_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
+AUTOMOD_CHANNEL = os.getenv("AUTOMOD_CHANNEL")
 
 
 # Create an instance of a bot
@@ -105,7 +106,7 @@ async def _tldr(ctx, message_link: str, language):
                 + "\n\nToo many messages to tl;dr! I can summarize at most {MAX_MESSAGES} messages."
             )
             return
-        if message.author.bot and message.author.name == "tl;dr":
+        if message.author.bot and message.author.id == bot.application_id:
             continue
         messages.append(f"{message.author}: {message.content}\n")
     # Ignore last message, which is the /tldr command.
@@ -144,6 +145,70 @@ async def _tldr(ctx, message_link: str, language):
     await bot_response.edit(
         content=bot_response.content + "\n\n" + response.choices[0].message.content
     )
+
+
+async def on_new_msg_or_edit(message: Message):
+    guild = message.guild
+    # ODo not process this bot's messages, to avoid an infinite loop of logging
+    if message.author.id == bot.application_id:
+        return
+    open_ai_response = client.chat.completions.create(
+        max_tokens=1,
+        model=OPENAI_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": f"""
+                The following lines contain rules. Vet the next message I send against these rules. Reply with letter: 0 if the message does not break the rules, 1 if the message breaks the rules.
+
+                No offensive, racist, homophobic, sexist or insulting remarks.
+                No NSFW / Illegal content.
+                Avoid spamming channels.
+                Avoid sending mass pings.
+                Keep channel content relevant to the topic.
+                Do not intentionally deceive other server members and admins. This includes but is not limited to fake-flagging (representing the wrong country) and fake-nicking (pretending to be someone else)
+                Be respectful of other server members and admins.
+                If you have nothing nice to say, including disparaging and mean spirited comments, keep them to yourself.
+                """,
+            },
+            {
+                "role": "user",
+                "content": message.content,
+            },
+        ],
+    )
+    first_char = open_ai_response.choices[0].message.content
+    if first_char != "0" and first_char != "1":
+        print("on_message: Bad response {first_char}")
+    if first_char == "0":
+        return
+    log_channel = utils.get(guild.channels, name=AUTOMOD_CHANNEL)
+    try:
+        await log_channel.send(
+            f"Potentially harmful message: https://discord.com/channels/{message.guild.id}/{message.channel.id}/{message.id}"
+        )
+    except Exception:
+        print("channel not found, or bot missing permissions")
+
+
+@bot.event
+async def on_message(message: Message):
+    await on_new_msg_or_edit(message)
+
+
+@bot.event
+async def on_raw_message_edit(after_raw):
+    guild = bot.get_guild(after_raw.guild_id)
+    if not guild:
+        print("Unable to find guild! message={after_raw}")
+    channel = utils.get(guild.channels, id=after_raw.channel_id)
+    if not channel:
+        print("Unable to find channel! message={after_raw}")
+    message = await channel.fetch_message(after_raw.message_id)
+    if not channel:
+        print("Unable to find message! message={after_raw}")
+
+    await on_new_msg_or_edit(message)
 
 
 bot.run(DISCORD_BOT_KEY)

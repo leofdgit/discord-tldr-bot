@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from discord import Intents, Client, utils
-from openai import OpenAI
+from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from typing import List
 import asyncio
+from itertools import groupby
 
 # Require permissions int: 34359938048
 
@@ -31,14 +32,20 @@ OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID"))
 
 
 # OpenAI client
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+
+@dataclass(frozen=True)
+class ChannelInfo:
+    name: str
+    id: int
 
 
 @dataclass
 class ChannelMessage:
     author: str
     content: str
-    channel: str
+    channel: ChannelInfo
     timestamp: datetime
 
 
@@ -55,19 +62,18 @@ class MyClient(Client):
 
     async def my_background_task(self):
         await self.wait_until_ready()
-        print("here")
         while not self.is_closed():
             await self.summarise()
-            await asyncio.sleep(10)
+            await asyncio.sleep(86400)
 
     async def summarise(self):
-        print("here too")
         guild = self.get_guild(GUILD_ID)
         output_channel = utils.get(guild.channels, id=OUTPUT_CHANNEL_ID)
         if output_channel is None:
             print(f"Error: could not find channel with name {output_channel}")
         prompt = f"""
-          Summarize the text using bullet points, total length at most one A4 page.
+          Summarize the text using bullet points, total length AT MOST 1900 characters: this is the most important
+          part of the prompt and must be adhered to at all costs.
           Translate text to English before summarizing if appropriate.
           MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES. Be succinct but go into detail where
           appropriate, e.g. if big decisions were made or if a topic was discussed at length, and
@@ -82,53 +88,73 @@ class MyClient(Client):
           previous summary and the new messages.
         """
         since = datetime.now() - timedelta(hours=24)
-        print("here too")
         messages: List[ChannelMessage] = []
-        print("here too")
-        print("here too")
         channels = guild.text_channels
         for channel in channels:
+            permissions = channel.permissions_for(
+                utils.get(guild.roles, id=1175518958338719858)
+            )
+            if not permissions.read_messages:
+                continue
+            if channel.id == OUTPUT_CHANNEL_ID:
+                continue
             print(f"Processing messages channel={channel.name}")
-            async for msg in channel.history(limit=None, after=since):
+            async for msg in channel.history(limit=100000, after=since):
                 if msg.author.bot and msg.author.id == self.application_id:
                     continue
                 messages.append(
                     ChannelMessage(
-                        msg.author.name, msg.content, channel.name, msg.created_at
+                        msg.author.name,
+                        msg.content,
+                        ChannelInfo(channel.name, channel.id),
+                        msg.created_at,
                     )
                 )
-        messages.sort(key=lambda x: x.timestamp)
+        messages = groupby(messages, key=lambda x: x.channel)
+        active_channel_messages = {}
+        for channel, group in messages:
+            msgs = list(group)
+            if len(msgs) < 6:
+                continue
+            active_channel_messages[channel] = sorted(msgs, key=lambda x: x.timestamp)
 
-        last_summary = None
-        for i, batch in enumerate(
-            [
-                messages[i : i + MESSAGE_BATCH_SIZE]
-                for i in range(0, len(messages), MESSAGE_BATCH_SIZE)
-            ]
-        ):
-            print(f"Processing batch {i}")
-            response = openai_client.chat.completions.create(
-                max_tokens=MAX_TOKENS,
-                model=OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": prompt
-                        if last_summary is None
-                        else prompt + iterative_prompt_suffix,
-                    },
-                    {
-                        "role": "user",
-                        "content": "\n".join(
-                            [
-                                f"{m.timestamp.isoformat(timespec='seconds')}:{m.channel}:{m.author}:{m.content}"
-                                for m in batch
-                            ]
-                        ),
-                    },
-                ],
+        for channel, msgs in active_channel_messages.items():
+            last_summary = None
+            for i, batch in enumerate(
+                [
+                    msgs[i : i + MESSAGE_BATCH_SIZE]
+                    for i in range(0, len(msgs), MESSAGE_BATCH_SIZE)
+                ]
+            ):
+                print(f"Processing batch {i} channel={channel.name}")
+                response = await openai_client.chat.completions.create(
+                    # max tokens is across completion
+                    max_tokens=MAX_TOKENS,
+                    model=OPENAI_MODEL,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": prompt
+                            if last_summary is None
+                            else prompt + iterative_prompt_suffix,
+                        },
+                        {
+                            "role": "user",
+                            "content": "\n".join(
+                                [
+                                    f"{m.timestamp.isoformat(timespec='seconds')}:{m.channel.name}:{m.author}:{m.content}"
+                                    for m in batch
+                                ]
+                            ),
+                        },
+                    ],
+                )
+            # Instead of this crude crop, somehow use max_tokens in a better way to ensure a small response <2000 chars.
+            final_response = (
+                f"Summary of <#{channel.id}> activity since <t:{str(since.timestamp()).split('.')[0]}>:\n\n"
+                + response.choices[0].message.content[:1900]
             )
-        await output_channel.send(response.choices[0].message.content)
+            await output_channel.send(final_response)
 
 
 intents = Intents.default()

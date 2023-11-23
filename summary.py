@@ -25,6 +25,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
 GUILD_ID = int(os.getenv("GUILD_ID"))
+# Should use tokens here instead, this is a crude proxy.
 MESSAGE_BATCH_SIZE = int(os.getenv("MESSAGE_BATCH_SIZE", "1000"))
 OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID"))
 
@@ -66,12 +67,14 @@ class MyClient(Client):
         if output_channel is None:
             print(f"Error: could not find channel with name {output_channel}")
         prompt = f"""
-          Summarize the text using bullet points. Translate text to English before
-          summarizing if appropriate.
+          Summarize the text using bullet points, total length at most one A4 page.
+          Translate text to English before summarizing if appropriate.
           MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES. Be succinct but go into detail where
           appropriate, e.g. if big decisions were made or if a topic was discussed at length, and
           use bullet points. Interpret messages starting with '/' as Discord bot commands.
           The text is made up of Discord messages and is formatted as timestamp:channel:author:content.
+          Typically, conversations do not span multiple channels, but in rare cases a conversation
+          will be continued across multiple channels.
         """
         iterative_prompt_suffix = f"""
           In addition, before messages, a summary of the previous {MESSAGE_BATCH_SIZE} messages is included.

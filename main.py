@@ -47,7 +47,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # Event listener for when the bot has switched from offline to online.
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name}.")
+    print(f"Logged in as {bot.user.id}.")
 
 
 @bot.command(name="tldr")

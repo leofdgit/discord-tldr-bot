@@ -8,12 +8,40 @@ from typing import List
 import asyncio
 from itertools import groupby
 import math
+import tiktoken
+
+# Due to uncertainty around the way that OpenAI tokenizes text server-side, include a pessemistic buffer.
+OPENAI_TOKEN_BUFFER = 100
+
+# TODO: add more
+MODEL_TO_MAX_TOKENS = {
+    "gpt-3.5-turbo": 4096,
+    "gpt-3.5-turbo-1106": 16385,
+    "gpt-4": 8192,
+    "gpt-4-1106-preview": 128000,
+}
+
+
+def max_input_tokens(model: str, max_output_tokens: int) -> int:
+    max_tokens_for_model = MODEL_TO_MAX_TOKENS[model]
+    if not max_tokens_for_model:
+        raise Exception(f"Unsupported model: {model}")
+    res = max_tokens_for_model - max_output_tokens - OPENAI_TOKEN_BUFFER
+    # Arbitrary, but avoid max_output_tokens being far too high for the choice of model
+    min_input_tokens = 1000
+    if res < min_input_tokens:
+        raise Exception(
+            f"Too few tokens allocated for input. max_tokens_for_model={max_tokens_for_model}, max_output_tokens={max_output_tokens}, input_tokens={res}. max_tokens_for_model - max_output_tokens must be greater than {min_input_tokens}"
+        )
+    return res
+
 
 if ENV_FILE := os.getenv("ENV_FILE"):
     load_dotenv(ENV_FILE)
 
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
+MAX_OUTPUT_TOKENS = int(os.getenv("MAX_TOKENS", "100"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+MAX_INPUT_TOKENS = max_input_tokens(OPENAI_MODEL, MAX_OUTPUT_TOKENS)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
 GUILD_ID = int(os.getenv("GUILD_ID"))
@@ -41,11 +69,48 @@ class ChannelMessage:
     timestamp: datetime
 
 
+async def summarize(
+    prompt: str,
+    iterative_prompt_suffix: str,
+    last_summary: str,
+    msgs_in_batch: List[str],
+    channel: ChannelInfo,
+    since: datetime,
+    batch_number: int,
+    output_channel,
+):
+    response = await openai_client.chat.completions.create(
+        max_tokens=MAX_OUTPUT_TOKENS,
+        model=OPENAI_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": prompt
+                if last_summary is None
+                else prompt + iterative_prompt_suffix,
+            },
+            {
+                "role": "user",
+                "content": "".join(msgs_in_batch),
+            },
+        ],
+    )
+    # Instead of this crude crop, somehow use max_tokens in a better way to ensure a small response <2000 chars.
+    prefix = (
+        f"Summary of <#{channel.id}> activity since <t:{str(since.timestamp()).split('.')[0]}>:\n\n"
+        if batch_number == 0
+        else ""
+    )
+    to_send = prefix + response.choices[0].message.content[:1900]
+    await output_channel.send(to_send)
+
+
 class MyClient(Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     async def setup_hook(self) -> None:
+        self.encoding = tiktoken.encoding_for_model(OPENAI_MODEL)
         self.bg_task = self.loop.create_task(self.my_background_task())
 
     async def on_ready(self):
@@ -62,6 +127,14 @@ class MyClient(Client):
         output_channel = utils.get(guild.channels, id=OUTPUT_CHANNEL_ID)
         if output_channel is None:
             print(f"Error: could not find channel with name {output_channel}")
+
+        output_channel.send(
+            f"""
+            Summarizing the last {SUMMARY_INTERVAL / 60 / 60} hours of conversation.
+            Any channels with fewer than {MIN_MESSAGES_TO_SUMMARIZE} in this period will be ignored.
+            """
+        )
+
         prompt = f"""
           Summarize the text using bullet points.
           MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES. Be succinct but go into detail where
@@ -74,10 +147,16 @@ class MyClient(Client):
           In addition, before messages, a summary of the previous {MESSAGE_BATCH_SIZE} messages is included.
           Use this summary as added context to aid in your summary of the input messages.
         """
+        base_tokens_amount = (
+            len(self.encoding.encode(prompt))
+            + len(self.encoding.encode(iterative_prompt_suffix))
+            + MAX_OUTPUT_TOKENS
+            + OPENAI_TOKEN_BUFFER
+        )
         since = datetime.now() - timedelta(seconds=SUMMARY_INTERVAL)
-        messages: List[ChannelMessage] = []
         channels = guild.text_channels
         for channel in channels:
+            messages: List[ChannelMessage] = []
             permissions = channel.permissions_for(
                 utils.get(guild.members, id=self.application_id)
             )
@@ -96,54 +175,53 @@ class MyClient(Client):
                         msg.created_at,
                     )
                 )
-        messages = groupby(messages, key=lambda x: x.channel)
-        active_channel_messages = {}
-        for channel, group in messages:
-            msgs = list(group)
-            if len(msgs) < MIN_MESSAGES_TO_SUMMARIZE:
+            if len(messages) < MIN_MESSAGES_TO_SUMMARIZE:
                 continue
-            active_channel_messages[channel] = sorted(msgs, key=lambda x: x.timestamp)
-        for channel, msgs in active_channel_messages.items():
             last_summary = None
-            for i, batch in enumerate(
-                [
-                    msgs[i : i + MESSAGE_BATCH_SIZE]
-                    for i in range(0, len(msgs), MESSAGE_BATCH_SIZE)
-                ]
-            ):
-                print(
-                    f"Processing batch {i}/{math.ceil(len(msgs) / MESSAGE_BATCH_SIZE)} channel={channel.name}"
+            batch_number = 0
+            while len(messages) > 0:
+                print(f"Processing batch {batch_number} channel={channel.name}")
+                msgs_in_batch = []
+                # Initialize with token allocation for the prompts and a prefix, and OPENAI_TOKEN_BUFFER.
+                num_tokens_in_batch = base_tokens_amount
+                for i, msg in enumerate(messages):
+                    formatted_msg = f"{msg.timestamp.isoformat(timespec='seconds')}:{msg.channel.name}:{msg.author}:{msg.content}\n"
+                    msg_tokens = len(self.encoding.encode(formatted_msg))
+                    # Edge case: need to handle this somehow
+                    if msg_tokens + base_tokens_amount > MAX_INPUT_TOKENS:
+                        raise Exception(
+                            f"Message too long to process: channel={channel.name} num_tokens={msg_tokens}"
+                        )
+                    if msg_tokens + num_tokens_in_batch > MAX_INPUT_TOKENS:
+                        await summarize(
+                            prompt,
+                            iterative_prompt_suffix,
+                            last_summary,
+                            msgs_in_batch,
+                            channel,
+                            since,
+                            batch_number,
+                            output_channel,
+                        )
+                        messages = messages[i:]
+                        batch_number += 1
+                        break
+                    else:
+                        num_tokens_in_batch += msg_tokens
+                        msgs_in_batch.append(formatted_msg)
+                # Process final batch
+                print(f"Processing batch {batch_number} channel={channel.name}")
+                await summarize(
+                    prompt,
+                    iterative_prompt_suffix,
+                    last_summary,
+                    msgs_in_batch,
+                    channel,
+                    since,
+                    batch_number,
+                    output_channel,
                 )
-                response = await openai_client.chat.completions.create(
-                    max_tokens=MAX_TOKENS,
-                    model=OPENAI_MODEL,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": prompt
-                            if last_summary is None
-                            else prompt + iterative_prompt_suffix,
-                        },
-                        {
-                            "role": "user",
-                            "content": "\n".join(
-                                [
-                                    f"{m.timestamp.isoformat(timespec='seconds')}:{m.channel.name}:{m.author}:{m.content}"
-                                    for m in batch
-                                ]
-                            ),
-                        },
-                    ],
-                )
-                # Instead of this crude crop, somehow use max_tokens in a better way to ensure a small response <2000 chars.
-                prefix = (
-                    f"Summary of <#{channel.id}> activity since <t:{str(since.timestamp()).split('.')[0]}>:\n\n"
-                    if i == 0
-                    else ""
-                )
-                to_send = prefix + response.choices[0].message.content[:1900]
-                print(to_send)
-                # await output_channel.send(to_send)
+                break
 
 
 intents = Intents.default()
@@ -152,4 +230,5 @@ intents.messages = True
 intents.guild_messages = True
 intents.guild_reactions = True
 client = MyClient(intents=intents)
+# TODO: run this in such a way that Exception cause the process to terminate
 client.run(DISCORD_BOT_KEY)

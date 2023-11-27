@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import List
 import asyncio
 from itertools import groupby
-import math
 import tiktoken
 
 # Due to uncertainty around the way that OpenAI tokenizes text server-side, include a pessemistic buffer.
@@ -39,7 +38,7 @@ def max_input_tokens(model: str, max_output_tokens: int) -> int:
 if ENV_FILE := os.getenv("ENV_FILE"):
     load_dotenv(ENV_FILE)
 
-MAX_OUTPUT_TOKENS = int(os.getenv("MAX_TOKENS", "100"))
+MAX_OUTPUT_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 MAX_INPUT_TOKENS = max_input_tokens(OPENAI_MODEL, MAX_OUTPUT_TOKENS)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -128,10 +127,9 @@ class MyClient(Client):
         if output_channel is None:
             print(f"Error: could not find channel with name {output_channel}")
 
-        output_channel.send(
+        await output_channel.send(
             f"""
-            Summarizing the last {SUMMARY_INTERVAL / 60 / 60} hours of conversation.
-            Any channels with fewer than {MIN_MESSAGES_TO_SUMMARIZE} in this period will be ignored.
+            Summarizing the last {SUMMARY_INTERVAL / 60 / 60} hours of conversation.\nAny channels with fewer than {MIN_MESSAGES_TO_SUMMARIZE} in this period will be ignored.
             """
         )
 
@@ -145,7 +143,7 @@ class MyClient(Client):
         """
         iterative_prompt_suffix = f"""
           In addition, before messages, a summary of the previous {MESSAGE_BATCH_SIZE} messages is included.
-          Use this summary as added context to aid in your summary of the input messages.
+          Use this summary as added context to aid in your summary of the input messages but DO NOT re-summarize it.
         """
         base_tokens_amount = (
             len(self.encoding.encode(prompt))
@@ -180,7 +178,6 @@ class MyClient(Client):
             last_summary = None
             batch_number = 0
             while len(messages) > 0:
-                print(f"Processing batch {batch_number} channel={channel.name}")
                 msgs_in_batch = []
                 # Initialize with token allocation for the prompts and a prefix, and OPENAI_TOKEN_BUFFER.
                 num_tokens_in_batch = base_tokens_amount
@@ -210,7 +207,6 @@ class MyClient(Client):
                         num_tokens_in_batch += msg_tokens
                         msgs_in_batch.append(formatted_msg)
                 # Process final batch
-                print(f"Processing batch {batch_number} channel={channel.name}")
                 await summarize(
                     prompt,
                     iterative_prompt_suffix,

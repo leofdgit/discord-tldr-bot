@@ -70,3 +70,15 @@ ENV_FILE=/path/to/env/file python main.py
 4. Behaviour: the summaries given are not deterministic, meaning that summarizing the same content
    twice may give two different results. The summarizies may be innacurate.
 5. Privacy Considerations: Ensure users in your Discord server are aware that their messages may be processed by this bot, and hence OpenAI, for summarization.
+
+## Server Summaries
+
+![A GIF showing the bot in action.](./gif_summary.gif)
+
+An experimental server summarizer bot is also available. Follow the [installation](#installation) steps above and edit `.env.server_summary` appropriately.
+
+Run with
+
+```
+ENV_FILE=.env.server_summary python summary.py
+```

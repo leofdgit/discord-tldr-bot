@@ -1,13 +1,14 @@
 from dataclasses import dataclass
-from discord import Intents, Client, utils
+from discord import Intents, Client, utils, TextChannel
 from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Text, Union
 import asyncio
-from itertools import groupby
 import tiktoken
+
+from .io import load_required
 
 # Due to uncertainty around the way that OpenAI tokenizes text server-side, include a pessemistic buffer.
 OPENAI_TOKEN_BUFFER = 100
@@ -41,12 +42,10 @@ if ENV_FILE := os.getenv("ENV_FILE"):
 MAX_OUTPUT_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 MAX_INPUT_TOKENS = max_input_tokens(OPENAI_MODEL, MAX_OUTPUT_TOKENS)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
-GUILD_ID = int(os.getenv("GUILD_ID"))
-# Should use tokens here instead, this is a crude proxy.
-MESSAGE_BATCH_SIZE = int(os.getenv("MESSAGE_BATCH_SIZE", "1000"))
-OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID"))
+OPENAI_API_KEY = load_required("OPENAI_API_KEY")
+DISCORD_BOT_KEY = load_required("DISCORD_BOT_KEY")
+GUILD_ID = int(load_required("GUILD_ID"))
+OUTPUT_CHANNEL_ID = int(load_required("OUTPUT_CHANNEL_ID"))
 SUMMARY_INTERVAL = int(os.getenv("SUMMARY_INTERVAL", "86400"))
 MIN_MESSAGES_TO_SUMMARIZE = int(os.getenv("MIN_MESSAGES_TO_SUMMARIZE", "0"))
 
@@ -71,12 +70,12 @@ class ChannelMessage:
 async def summarize(
     prompt: str,
     iterative_prompt_suffix: str,
-    last_summary: str,
+    last_summary: Union[str, None],
     msgs_in_batch: List[str],
-    channel: ChannelInfo,
+    channel_id: int,
     since: datetime,
     batch_number: int,
-    output_channel,
+    output_channel: TextChannel,
 ):
     response = await openai_client.chat.completions.create(
         max_tokens=MAX_OUTPUT_TOKENS,
@@ -94,13 +93,16 @@ async def summarize(
             },
         ],
     )
-    # Instead of this crude crop, somehow use max_tokens in a better way to ensure a small response <2000 chars.
+    if (content := response.choices[0].message.content) is None:
+        await output_channel.send("Something went wrong!")
+        raise Exception("Received no content.")
     prefix = (
-        f"Summary of <#{channel.id}> activity since <t:{str(since.timestamp()).split('.')[0]}>:\n\n"
+        f"Summary of <#{channel_id}> activity since <t:{str(since.timestamp()).split('.')[0]}>:\n\n"
         if batch_number == 0
         else ""
     )
-    to_send = prefix + response.choices[0].message.content[:1900]
+    # Instead of this crude crop, somehow use max_tokens in a better way to ensure a small response <2000 chars.
+    to_send = prefix + content[:1900]
     await output_channel.send(to_send)
 
 
@@ -113,6 +115,7 @@ class MyClient(Client):
         self.bg_task = self.loop.create_task(self.my_background_task())
 
     async def on_ready(self):
+        assert self.user is not None, f"Not logged in!"
         print(f"Logged in as {self.user} (ID: {self.user.id})")
 
     async def my_background_task(self):
@@ -122,10 +125,17 @@ class MyClient(Client):
             await asyncio.sleep(SUMMARY_INTERVAL)
 
     async def summarise(self):
+        if not self.application_id:
+            raise Exception('Not logged in!')
         guild = self.get_guild(GUILD_ID)
+        if not guild:
+            raise Exception(f"Failed to get guild with id {GUILD_ID}")
         output_channel = utils.get(guild.channels, id=OUTPUT_CHANNEL_ID)
         if output_channel is None:
-            print(f"Error: could not find channel with name {output_channel}")
+            raise Exception(f"Error: could not find channel with name {output_channel}")
+        
+        if not isinstance(output_channel, TextChannel):
+            raise Exception('Output channel must be a text channel.')
 
         await output_channel.send(
             f"""
@@ -142,7 +152,7 @@ class MyClient(Client):
           Typically, conversations do not span multiple channels, but that is not a hard rule.
         """
         iterative_prompt_suffix = f"""
-          In addition, before messages, a summary of the previous {MESSAGE_BATCH_SIZE} messages is included.
+          In addition, before messages, a summary of the previous {MAX_INPUT_TOKENS} tokens of channel text is included.
           Use this summary as added context to aid in your summary of the input messages but DO NOT re-summarize it.
         """
         base_tokens_amount = (
@@ -155,8 +165,11 @@ class MyClient(Client):
         channels = guild.text_channels
         for channel in channels:
             messages: List[ChannelMessage] = []
+            bot_member = utils.get(guild.members, id=self.application_id)
+            if not bot_member:
+                raise Exception('Unable to find bot Discord user.')
             permissions = channel.permissions_for(
-                utils.get(guild.members, id=self.application_id)
+                bot_member
             )
             if not permissions.read_messages:
                 continue
@@ -195,7 +208,7 @@ class MyClient(Client):
                             iterative_prompt_suffix,
                             last_summary,
                             msgs_in_batch,
-                            channel,
+                            channel.id,
                             since,
                             batch_number,
                             output_channel,
@@ -212,7 +225,7 @@ class MyClient(Client):
                     iterative_prompt_suffix,
                     last_summary,
                     msgs_in_batch,
-                    channel,
+                    channel.id,
                     since,
                     batch_number,
                     output_channel,

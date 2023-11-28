@@ -126,16 +126,16 @@ class MyClient(Client):
 
     async def summarise(self):
         if not self.application_id:
-            raise Exception('Not logged in!')
+            raise Exception("Not logged in!")
         guild = self.get_guild(GUILD_ID)
         if not guild:
             raise Exception(f"Failed to get guild with id {GUILD_ID}")
         output_channel = utils.get(guild.channels, id=OUTPUT_CHANNEL_ID)
         if output_channel is None:
             raise Exception(f"Error: could not find channel with name {output_channel}")
-        
+
         if not isinstance(output_channel, TextChannel):
-            raise Exception('Output channel must be a text channel.')
+            raise Exception("Output channel must be a text channel.")
 
         await output_channel.send(
             f"""
@@ -167,10 +167,8 @@ class MyClient(Client):
             messages: List[ChannelMessage] = []
             bot_member = utils.get(guild.members, id=self.application_id)
             if not bot_member:
-                raise Exception('Unable to find bot Discord user.')
-            permissions = channel.permissions_for(
-                bot_member
-            )
+                raise Exception("Unable to find bot Discord user.")
+            permissions = channel.permissions_for(bot_member)
             if not permissions.read_messages:
                 continue
             # This stops the bot summarizing previous summaries.

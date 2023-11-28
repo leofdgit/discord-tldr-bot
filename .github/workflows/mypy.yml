@@ -15,8 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  mypy:
+  static-analysis:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: [black, mypy]
+    name: Run ${{ matrix.task }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,4 +34,9 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Run mypy
+        if: matrix.task == 'mypy'
         run: mypy src
+
+      - name: Run black
+        if: matrix.task == 'black'
+        run: black --check src

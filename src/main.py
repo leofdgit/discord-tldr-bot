@@ -40,11 +40,11 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 @bot.event
 async def on_ready():
     if not bot.user:
-        raise Exception('Not logged in!')
+        raise Exception("Not logged in!")
     print(f"Logged in as {bot.user.id}.")
 
 
-@bot.command(name="tldr") # type: ignore
+@bot.command(name="tldr")  # type: ignore
 async def tldr(ctx, message_link: str, language: str = "English"):
     try:
         await _tldr(ctx, message_link, language)

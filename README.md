@@ -1,6 +1,6 @@
 # discord-bot-tldr
 
-![A GIF showing the bot in action.](./bot_gif.gif)
+![A GIF showing the bot in action.](./assets/bot_gif.gif)
 
 Summarize conversations that you don't have time to read.
 
@@ -73,7 +73,7 @@ ENV_FILE=/path/to/env/file python src/main.py
 
 ## Server Summaries
 
-![A GIF showing the bot in action.](./gif_summary.gif)
+![A GIF showing the bot in action.](./assets/gif_summary.gif)
 
 An experimental server summarizer bot is also available. Follow the [installation](#installation) steps above and edit `.env.server_summary` appropriately.
 

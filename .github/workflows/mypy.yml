@@ -35,8 +35,8 @@ jobs:
 
       - name: Run mypy
         if: matrix.task == 'mypy'
-        run: mypy src
+        run: mypy src *.py
 
       - name: Run black
         if: matrix.task == 'black'
-        run: black --check src
+        run: black --check src *.py

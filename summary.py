@@ -8,8 +8,8 @@ from typing import List, Text, Union
 import asyncio
 import tiktoken
 
-from env import load_required
-from openai_utils import max_input_tokens, OPENAI_TOKEN_BUFFER
+from src.env import load_required
+from src.openai_utils import max_input_tokens, OPENAI_TOKEN_BUFFER
 
 
 if ENV_FILE := os.getenv("ENV_FILE"):

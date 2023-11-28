@@ -5,7 +5,7 @@ import re
 import os
 from dotenv import load_dotenv
 
-from env import load_required
+from src.env import load_required
 
 # Require permissions int: 34359938048
 

@@ -5,6 +5,8 @@ import re
 import os
 from dotenv import load_dotenv
 
+from .io import load_required
+
 # Require permissions int: 34359938048
 
 LINK_PATTERN = r"https://discord\.com/channels/(?:\d+)/(\d+)/(\d+)"
@@ -14,24 +16,13 @@ LINK_PATTERN = r"https://discord\.com/channels/(?:\d+)/(\d+)/(\d+)"
 if ENV_FILE := os.getenv("ENV_FILE"):
     load_dotenv(ENV_FILE)
 
-# Read the list of authorized user IDs from an environment variable.
-# The value of the AUTHORIZED_USERS env var should be a csv-delimited array
-# of Discord IDs.
-# E.g. 12345,67890
-# which would allow the two users whose Discord IDs are 12345 and 67890 to
-# use the command.
 AUTHORIZED_USERS = [u for u in os.getenv("AUTHORIZED_USERS", "").split(",") if u != ""]
-MAX_MESSAGES = int(os.getenv("MAX_MESSAGES") or 100000)
-MAX_MESSAGE_COMBINED_LENGTH = int(
-    os.getenv("MAX_MESSAGE_COMBINED_LENGTH") or (100000 * 1000)
-)
+MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "100000"))
+MAX_MESSAGE_COMBINED_LENGTH = int(os.getenv("MAX_MESSAGE_COMBINED_LENGTH", "100000000"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
-if not DISCORD_BOT_KEY:
-    raise Exception('No DISCORD_BOT_KEY supplied!')
-
+OPENAI_API_KEY = load_required("OPENAI_API_KEY")
+DISCORD_BOT_KEY = load_required("DISCORD_BOT_KEY")
 
 # Create an instance of a bot
 intents = Intents.default()

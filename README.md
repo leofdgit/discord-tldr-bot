@@ -8,7 +8,7 @@ Summarize conversations that you don't have time to read.
 
 ### Prerequisites
 
-- Python
+- Python (known to work with 3.11)
 - Discord Bot Token ([How to create a Discord Bot](https://discord.com/developers/docs/getting-started#step-1-creating-an-app))
 - OpenAI API Key ([OpenAI API](https://platform.openai.com/api-keys))
 
@@ -46,7 +46,7 @@ OPENAI_API_KEY=your_openai_api_key
 ### With an .env file
 
 ```sh
-ENV_FILE=/path/to/env/file python main.py
+ENV_FILE=/path/to/env/file python src/main.py
 ```
 
 ## Usage
@@ -80,5 +80,5 @@ An experimental server summarizer bot is also available. Follow the [installatio
 Run with
 
 ```
-ENV_FILE=.env.server_summary python summary.py
+ENV_FILE=.env.server_summary python src/summary.py
 ```

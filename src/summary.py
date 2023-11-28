@@ -8,6 +8,8 @@ from typing import List, Text, Union
 import asyncio
 import tiktoken
 
+from .io import load_required
+
 # Due to uncertainty around the way that OpenAI tokenizes text server-side, include a pessemistic buffer.
 OPENAI_TOKEN_BUFFER = 100
 
@@ -40,23 +42,10 @@ if ENV_FILE := os.getenv("ENV_FILE"):
 MAX_OUTPUT_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 MAX_INPUT_TOKENS = max_input_tokens(OPENAI_MODEL, MAX_OUTPUT_TOKENS)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
-if not DISCORD_BOT_KEY:
-    raise Exception('no DISCORD_BOT_KEY supplied!')
-
-GUILD_ID_ = os.getenv("GUILD_ID")
-if type(GUILD_ID_) is str:
-    GUILD_ID = int(GUILD_ID_)
-else:
-    raise Exception("No GUILD_ID supplied!")
-# Should use tokens here instead, this is a crude proxy.
-MESSAGE_BATCH_SIZE = int(os.getenv("MESSAGE_BATCH_SIZE", "1000"))
-OUTPUT_CHANNEL_ID_ = os.getenv("OUTPUT_CHANNEL_ID")
-if type(OUTPUT_CHANNEL_ID_) is str:
-    OUTPUT_CHANNEL_ID = int(OUTPUT_CHANNEL_ID_)
-else:
-    raise Exception("No OUTPUT_CHANNEL_ID supplied!")
+OPENAI_API_KEY = load_required("OPENAI_API_KEY")
+DISCORD_BOT_KEY = load_required("DISCORD_BOT_KEY")
+GUILD_ID = int(load_required("GUILD_ID"))
+OUTPUT_CHANNEL_ID = int(load_required("OUTPUT_CHANNEL_ID"))
 SUMMARY_INTERVAL = int(os.getenv("SUMMARY_INTERVAL", "86400"))
 MIN_MESSAGES_TO_SUMMARIZE = int(os.getenv("MIN_MESSAGES_TO_SUMMARIZE", "0"))
 
@@ -163,7 +152,7 @@ class MyClient(Client):
           Typically, conversations do not span multiple channels, but that is not a hard rule.
         """
         iterative_prompt_suffix = f"""
-          In addition, before messages, a summary of the previous {MESSAGE_BATCH_SIZE} messages is included.
+          In addition, before messages, a summary of the previous {MAX_INPUT_TOKENS} tokens of channel text is included.
           Use this summary as added context to aid in your summary of the input messages but DO NOT re-summarize it.
         """
         base_tokens_amount = (

@@ -3,7 +3,6 @@ from discord.ext import commands
 from openai import OpenAI
 import re
 import os
-from math import inf
 from dotenv import load_dotenv
 
 # Require permissions int: 34359938048
@@ -30,6 +29,8 @@ MAX_TOKENS = int(os.getenv("MAX_TOKENS", "200"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_BOT_KEY = os.getenv("DISCORD_BOT_KEY")
+if not DISCORD_BOT_KEY:
+    raise Exception('No DISCORD_BOT_KEY supplied!')
 
 
 # Create an instance of a bot
@@ -47,10 +48,12 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # Event listener for when the bot has switched from offline to online.
 @bot.event
 async def on_ready():
+    if not bot.user:
+        raise Exception('Not logged in!')
     print(f"Logged in as {bot.user.id}.")
 
 
-@bot.command(name="tldr")
+@bot.command(name="tldr") # type: ignore
 async def tldr(ctx, message_link: str, language: str = "English"):
     try:
         await _tldr(ctx, message_link, language)

@@ -6,6 +6,8 @@ import os
 from dotenv import load_dotenv
 
 from src.env import load_required
+from src.openai_utils import SummaryClient
+from src.summarizer import DEFAULT_PROMPT
 
 # Require permissions int: 34359938048
 
@@ -24,6 +26,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_API_KEY = load_required("OPENAI_API_KEY")
 DISCORD_BOT_KEY = load_required("DISCORD_BOT_KEY")
 
+# OpenAI Client
+client = SummaryClient(DEFAULT_PROMPT, MAX_TOKENS, OPENAI_MODEL, api_key=OPENAI_API_KEY)
 # Create an instance of a bot
 intents = Intents.default()
 intents.message_content = True
@@ -31,9 +35,6 @@ intents.messages = True
 intents.guild_messages = True
 intents.guild_reactions = True
 bot = commands.Bot(command_prefix="/", intents=intents)
-
-# OpenAI Client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # Event listener for when the bot has switched from offline to online.
@@ -113,31 +114,8 @@ async def _tldr(ctx, message_link: str, language):
         return
 
     # OpenAI call to generate summary
-    response = client.chat.completions.create(
-        max_tokens=MAX_TOKENS,
-        model=OPENAI_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": f"""Summarize the text using bullet points. The text may not be in English.
-                MENTION NAMES EXPLICITLY AND EXACTLY AS WRITTEN IN THE MESSAGES. Be succinct:
-                use between 1 and 5 bullet points in your response, depending on how many distinct topics
-                there are to summarize. Interpret messages starting with '/' as Discord bot commands.
-                /tldr <link> means that a request to summarize all messages in the channel following the
-                Discord post referenced by <link> was made (to you!).
-                Quoting particularly funny, extraordinary or shocking lines from
-                the messages is a bonus. Write the summary in {language}; if {language} is
-                not a language you know then revert to English.""",
-            },
-            {
-                "role": "user",
-                "content": f"Summarize the following conversation:\n\n{''.join(messages)}",
-            },
-        ],
-    )
-    await bot_response.edit(
-        content=bot_response.content + "\n\n" + response.choices[0].message.content
-    )
+    content = await client.summarize(messages)
+    await bot_response.edit(content=bot_response.content + "\n\n" + content)
 
 
 bot.run(DISCORD_BOT_KEY)

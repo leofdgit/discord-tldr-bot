@@ -5,7 +5,7 @@ import re
 import os
 from dotenv import load_dotenv
 
-from src.env import load_required
+from src.config import load_required
 from src.openai_utils import SummaryClient
 from src.summarizer import DEFAULT_PROMPT
 

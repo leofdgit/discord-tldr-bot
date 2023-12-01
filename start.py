@@ -1,9 +1,7 @@
 from dataclasses import dataclass
-from discord import Intents, Client, utils, TextChannel
-import os
-from dotenv import load_dotenv
-from datetime import datetime, timedelta
-import asyncio
+from datetime import datetime
+
+from discord import Intents
 
 from src.config import AIProvider, load_config
 from src.discord_client import DiscordClient, register_commands
@@ -26,9 +24,8 @@ class ChannelMessage:
 
 
 def ai_client(ai_provider: AIProvider) -> type[Summarizer]:
-    match ai_provider:
-        case AIProvider.open_ai:
-            return OpenAISummaryClient
+    if ai_provider is AIProvider.open_ai:
+        return OpenAISummaryClient
 
 
 discord_config, ai_config = load_config()

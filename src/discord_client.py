@@ -1,22 +1,19 @@
+import asyncio
 import re
-
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import List
+
 from discord import (
     ChannelType,
     Client,
-    Message,
-    User,
-    utils,
-    TextChannel,
-    app_commands,
+    HTTPException,
     Interaction,
     NotFound,
-    HTTPException,
+    TextChannel,
+    app_commands,
+    utils,
 )
-from datetime import datetime, timedelta
-import asyncio
-
-from typing import List
 
 from src.config import DiscordClientConfig
 from src.summarizer import Summarizer
@@ -74,7 +71,7 @@ class DiscordClient(Client):
     async def summarise_messages(
         self, messages: List[ChannelMessage], output_channel: TextChannel
     ):
-        msgs_in_batch = []
+        msgs_in_batch: List[str] = []
         # Initialize with token allocation for the prompts and a prefix, and OPENAI_TOKEN_BUFFER.
         num_tokens_in_batch = 0
         while len(messages) > 0:

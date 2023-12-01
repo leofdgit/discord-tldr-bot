@@ -5,11 +5,9 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import asyncio
 
-from src.config import load_config, load_required, AIProvider
-from src.discord_client import DiscordClient
-from src.openai_utils import (
-    SummaryClient as OpenAISummaryClient,
-)
+from src.config import AIProvider, load_config
+from src.discord_client import DiscordClient, register_commands
+from src.openai_utils import SummaryClient as OpenAISummaryClient
 from src.summarizer import Summarizer
 
 
@@ -44,5 +42,6 @@ intents.messages = True
 intents.guild_messages = True
 intents.guild_reactions = True
 client = DiscordClient(discord_config, summarizer, intents=intents)
+register_commands(client)
 # TODO: run this in such a way that Exception cause the process to terminate
 client.run(discord_config.client_key)

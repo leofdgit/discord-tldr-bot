@@ -1,7 +1,5 @@
 # discord-bot-tldr
 
-![A GIF showing the bot in action.](./assets/bot_gif.gif)
-
 Summarize conversations that you don't have time to read.
 
 ## Installation
@@ -32,13 +30,16 @@ pip install -r requirements.txt
 Edit the .env file in the project directory to populate it with your Discord Bot Token and OpenAI API Key:
 
 ```makefile
-AUTHORIZED_USERS=12345,67890
-MAX_MESSAGES=500
-MAX_MESSAGE_COMBINED_LENGTH=10000
-MAX_TOKENS=200
-OPENAI_MODEL=gpt-3.5-turbo
-DISCORD_BOT_KEY=your_discord_bot_token
-OPENAI_API_KEY=your_openai_api_key
+AUTHORIZED_USER_IDS=12345,67890
+DISCORD_CLIENT_KEY=change-me
+GUILD_ID=change-me
+SUMMARY_MSG_LOWER_LIMIT=5
+SUMMARY_OUTPUT_CHANNEL_ID=change-me
+SUMMARY_INTERVAL=86400
+MAX_OUTPUT_TOKENS=200
+AI_PROVIDER=open_ai
+AI_MODEL=gpt-3.5-turbo
+AI_API_KEY=change-me
 ```
 
 ## Running the bot
@@ -46,39 +47,31 @@ OPENAI_API_KEY=your_openai_api_key
 ### With an .env file
 
 ```sh
-ENV_FILE=/path/to/env/file python main.py
+ENV_FILE=/path/to/env/file python start.py
 ```
 
 ## Usage
 
 ### Commands
 
-`/tldr <message_link> [language]`: Summarizes the conversation following the message linked. If a language is specified, the summary will be provided in that language (defaults to English). This command **must** be used in the same channel as the linked message or an error will occur.
+![A GIF showing the bot in action.](./assets/bot_gif.gif)
 
-### Examples
+`/tldr <message_link>`: Summarizes the conversation following the message linked.
 
 ```
 /tldr https://discord.com/channels/1234567890/0987654321/1122334455
-/tldr https://discord.com/channels/1234567890/0987654321/1122334455 Spanish
 ```
 
-## Caveats and Tips
-
-1. Message Limit: the choice of API model dictates how many messages can be processed See the [models documentation](https://platform.openai.com/docs/models) for more information.
-2. API Rate Limits: Be mindful of OpenAI's API [usage limits](https://platform.openai.com/account/limits).
-3. Cost: GPT4 is quite expensive; at the time of writing, summarizing 200 short-ish messages incurred a cost of $0.10. GPT3.5 is much cheaper.
-4. Behaviour: the summaries given are not deterministic, meaning that summarizing the same content
-   twice may give two different results. The summarizies may be innacurate.
-5. Privacy Considerations: Ensure users in your Discord server are aware that their messages may be processed by this bot, and hence OpenAI, for summarization.
-
-## Server Summaries
+### Daily Summaries
 
 ![A GIF showing the bot in action.](./assets/gif_summary.gif)
 
-An experimental server summarizer bot is also available. Follow the [installation](#installation) steps above and edit `.env.server_summary` appropriately.
+The bot will also produce daily summaries of server messages, outputting results to a specified channel. The ID of the channel must be provided in the SUMMARY_OUTPUT_CHANNEL_ID environment variable.
 
-Run with
+## Caveats and Tips
 
-```
-ENV_FILE=.env.server_summary python summary.py
-```
+1. API Rate Limits: Be mindful of OpenAI's API [usage limits](https://platform.openai.com/account/limits).
+2. Cost: GPT4 is quite expensive; at the time of writing, summarizing 200 short-ish messages incurred a cost of $0.10. GPT3.5 is much cheaper.
+3. Behaviour: the summaries given are not deterministic, meaning that summarizing the same content
+   twice may give two different results. The summarizies may be innacurate.
+4. Privacy Considerations: Ensure users in your Discord server are aware that their messages may be processed by this bot, and hence OpenAI, for summarization.

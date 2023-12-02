@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        task: [black, mypy]
+        task: [black, mypy, pycln, isort]
     name: Run ${{ matrix.task }}
     steps:
       - name: Checkout
@@ -35,8 +35,16 @@ jobs:
 
       - name: Run mypy
         if: matrix.task == 'mypy'
-        run: mypy src *.py
+        run: mypy src start.py
 
       - name: Run black
         if: matrix.task == 'black'
-        run: black --check src *.py
+        run: black --check src start.py
+
+      - name: Run pycln
+        if: matrix.task == 'pycln'
+        run: pycln --check src start.py
+
+      - name: Run isort
+        if: matrix.task == 'isort'
+        run: isort --profile black --check src start.py

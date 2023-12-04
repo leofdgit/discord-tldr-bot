@@ -75,13 +75,13 @@ class DiscordClient(Client):
             while self.summary_active:
                 time_now = time.time()
                 if (
-                    time_left := time_now - self.last_summary_time
+                    time_since_last_summary := time_now - self.last_summary_time
                 ) > self.config.summary_interval:
                     await self.summarise()
                     self.last_summary_time = time_now
                     await asyncio.sleep(self.config.summary_interval)
                 else:
-                    await asyncio.sleep(time_left)
+                    await asyncio.sleep(time_since_last_summary)
             # if self.summary_active is set to False: only check for value changes once per second
             # to avoid unnecessary CPU usage
             await asyncio.sleep(1)

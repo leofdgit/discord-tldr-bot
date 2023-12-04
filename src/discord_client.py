@@ -50,6 +50,7 @@ class DiscordClient(Client):
         self.config = config
         self.summarizer = summarizer
         self.last_summary_time = 0
+        self.summary_active = config.summary_autostart
 
     async def setup_hook(self) -> None:
         guild = await self.fetch_guild(self.config.guild_id)
@@ -71,15 +72,19 @@ class DiscordClient(Client):
         await self.wait_until_ready()
         self.last_summary_time = await self.deduce_last_summary_time()
         while not self.is_closed():
-            time_now = time.time()
-            if (
-                time_left := time_now - self.last_summary_time
-            ) > self.config.summary_interval:
-                await self.summarise()
-                self.last_summary_time = time_now
-                await asyncio.sleep(self.config.summary_interval)
-            else:
-                await asyncio.sleep(time_left)
+            while self.summary_active:
+                time_now = time.time()
+                if (
+                    time_left := time_now - self.last_summary_time
+                ) > self.config.summary_interval:
+                    await self.summarise()
+                    self.last_summary_time = time_now
+                    await asyncio.sleep(self.config.summary_interval)
+                else:
+                    await asyncio.sleep(time_left)
+            # if self.summary_active is set to False: only check for value changes once per second
+            # to avoid unnecessary CPU usage
+            await asyncio.sleep(1)
 
     async def deduce_last_summary_time(self) -> float:
         """
@@ -219,6 +224,39 @@ class DiscordClient(Client):
 
 
 def register_commands(client: DiscordClient) -> None:
+    @client.tree.command(name="activate_summary")
+    async def activate_summary(interaction: Interaction):
+        if (
+            len((authd_users := client.config.authorized_user_ids)) > 0
+            and str(interaction.user.id) not in authd_users
+        ):
+            await interaction.response.send_message(
+                "You do not have permission to use this command."
+            )
+            return
+        client.summary_active = True
+        last_summary_time = await client.deduce_last_summary_time()
+        time_now = time.time()
+        time_left = min(
+            int(time_now - last_summary_time - client.config.summary_interval), 0
+        )
+        await interaction.response.send_message(
+            f"Summaries activated. Sending server summaries to <#{client.config.summary_output_channel_id}> every {client.config.summary_interval} seconds. Next summary in {time_left} seconds."
+        )
+
+    @client.tree.command(name="deactivate_summary")
+    async def deactivate_summary(interaction: Interaction):
+        if (
+            len((authd_users := client.config.authorized_user_ids)) > 0
+            and str(interaction.user.id) not in authd_users
+        ):
+            await interaction.response.send_message(
+                "You do not have permission to use this command."
+            )
+            return
+        client.summary_active = False
+        await interaction.response.send_message("Summaries deactivated.")
+
     @app_commands.describe(
         message_link="Discord link to a message in this server. All messages in the channel that the message was sent in after and including the linked message will be summarized.",
     )

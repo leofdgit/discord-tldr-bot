@@ -20,6 +20,7 @@ class DiscordClientConfig:
     summary_interval: int
     summary_output_channel_id: int
     summary_msg_lower_limit: int
+    summary_autostart: bool
     guild_id: int
     authorized_user_ids: List[int]
     client_key: str
@@ -48,11 +49,16 @@ def load_config() -> tuple[DiscordClientConfig, AIConfig]:
     if ENV_FILE := os.getenv("ENV_FILE"):
         load_dotenv(ENV_FILE)
 
+    _summary_autostart = os.getenv("SUMMARY_AUTOSTART", "false")
+    assert _summary_autostart in ["true", "false"]
+    summary_autostart = True if _summary_autostart == "true" else False
+
     return (
         DiscordClientConfig(
             int(os.getenv("SUMMARY_INTERVAL", "86400")),
             int(load_required("SUMMARY_OUTPUT_CHANNEL_ID")),
             int(os.getenv("SUMMARY_MSG_LOWER_LIMIT", "0")),
+            summary_autostart,
             int(load_required("GUILD_ID")),
             [
                 int(u)

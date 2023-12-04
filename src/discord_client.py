@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List
@@ -48,6 +49,7 @@ class DiscordClient(Client):
         self.tree = app_commands.CommandTree(self)
         self.config = config
         self.summarizer = summarizer
+        self.last_summary_time = 0
 
     async def setup_hook(self) -> None:
         guild = await self.fetch_guild(self.config.guild_id)
@@ -56,17 +58,57 @@ class DiscordClient(Client):
             raise Exception(f"Failed to get guild with id {self.config.guild_id}")
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        self.bg_task = self.loop.create_task(self.my_background_task())
+        self.bg_task = self.loop.create_task(self.period_summary())
 
     async def on_ready(self):
         assert self.user is not None, f"Not logged in!"
         print(f"Logged in as {self.user} (ID: {self.user.id})")
 
-    async def my_background_task(self):
+    async def period_summary(self):
+        """
+        Each self.config.summary_interval, summarize server conversation.
+        """
         await self.wait_until_ready()
+        self.last_summary_time = await self.deduce_last_summary_time()
         while not self.is_closed():
-            await self.summarise()
-            await asyncio.sleep(self.config.summary_interval)
+            time_now = time.time()
+            if (
+                time_left := time_now - self.last_summary_time
+            ) > self.config.summary_interval:
+                await self.summarise()
+                self.last_summary_time = time_now
+                await asyncio.sleep(self.config.summary_interval)
+            else:
+                await asyncio.sleep(time_left)
+
+    async def deduce_last_summary_time(self) -> float:
+        """
+        Returns time.time() - min(self.config.summary_interval, last_summary_time)
+        """
+        if not self.application_id:
+            raise Exception("Not logged in!")
+        guild = self.get_guild(self.config.guild_id)
+        if not guild:
+            raise Exception(f"Failed to get guild with id {self.config.guild_id}")
+        output_channel = utils.get(
+            guild.channels, id=self.config.summary_output_channel_id
+        )
+        if output_channel is None:
+            raise Exception(f"Error: could not find channel with name {output_channel}")
+
+        if not isinstance(output_channel, TextChannel):
+            raise Exception("Output channel must be a text channel.")
+        earliest_possible_summary_time = datetime.now() - timedelta(
+            seconds=self.config.summary_interval
+        )
+        async for msg in output_channel.history(
+            after=earliest_possible_summary_time, limit=None
+        ):
+            if msg.author.id == self.application_id and msg.content.startswith(
+                "Summarizing server activity since"
+            ):
+                return msg.created_at.timestamp()
+        return earliest_possible_summary_time.timestamp()
 
     async def summarise_messages(
         self, messages: List[ChannelMessage], output_channel: TextChannel

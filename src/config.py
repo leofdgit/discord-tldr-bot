@@ -71,7 +71,7 @@ def load_config() -> tuple[DiscordClientConfig, AIConfig]:
             DEFAULT_PROMPT,
             int(os.getenv("MAX_OUTPUT_TOKENS", "200")),
             AIProvider(load_required("AI_PROVIDER")),
-            os.getenv("AI_MODEL", "gpt-3.5-turbo"),
+            load_required("AI_MODEL"),
             load_required("AI_API_KEY"),
         ),
     )

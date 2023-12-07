@@ -18,7 +18,7 @@ Summarize conversations that you don't have time to read.
 
 ![A GIF showing the bot in action.](./assets/activate.gif)
 
-The bot will also produce periodic summaries of server messages, outputting results to a specified channel. The ID of the channel must be provided in the SUMMARY_OUTPUT_CHANNEL_ID environment variable.
+The bot will also produce periodic summaries of server messages, outputting results to a specified channel. The ID of the channel must be provided in the `SUMMARY_OUTPUT_CHANNEL_ID` environment variable.
 
 #### Activate/Deactivate Summaries
 
